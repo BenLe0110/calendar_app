@@ -53,6 +53,33 @@ flutter pub get
 flutter run
 ```
 
+## 📱 Platform-Specific Setup
+
+### Android Development
+
+For detailed Android development setup instructions, see [Android Development Guide](android/README.md).
+
+Key requirements for Android development:
+- Android Studio 2024.3 or later
+- Android SDK Platform 34 (Android 14.0)
+- Android SDK Build-Tools 34.0.0
+- Android Emulator with API 34
+- Flutter and Dart plugins in Android Studio
+
+Common Android-specific features:
+- SQLite database for local storage
+- Platform-specific UI components
+- Android-specific permissions handling
+- Custom Android manifest configurations
+
+### iOS Development
+
+For iOS development setup, ensure you have:
+- Xcode 15.0 or later
+- iOS Simulator
+- CocoaPods installed
+- Valid Apple Developer account (for physical device testing)
+
 ## 📱 Usage
 
 1. **Browsing the Calendar**
@@ -86,6 +113,20 @@ lib/
 ```
 
 For detailed information about the project structure, see [lib/README.md](calendar_app/lib/README.md).
+
+## 🔧 Platform-Specific Development
+
+### Android
+- Located in `android/` directory
+- Uses Gradle for build system
+- Supports multiple Android API levels
+- Implements platform-specific features
+
+### iOS
+- Located in `ios/` directory
+- Uses CocoaPods for dependency management
+- Supports iOS 14 and above
+- Implements platform-specific features
 
 ## 🤝 Contributing
 

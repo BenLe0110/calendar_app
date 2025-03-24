@@ -1,7 +1,10 @@
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart' as path_provider;
 import '../models/user.dart';
 
 class AuthService {
@@ -18,27 +21,45 @@ class AuthService {
 
   Future<Database> _initDatabase() async {
     try {
-      String path = join(await getDatabasesPath(), 'calendar.db');
-      return await openDatabase(
-        path,
-        version: 1,
-        onCreate: (Database db, int version) async {
-          await db.execute('''
-            CREATE TABLE IF NOT EXISTS $tableName(
-              id TEXT PRIMARY KEY,
-              email TEXT UNIQUE NOT NULL,
-              name TEXT NOT NULL,
-              password TEXT NOT NULL,
-              photoUrl TEXT,
-              preferences TEXT
-            )
-          ''');
-        },
-      );
+      final Directory documentsDirectory =
+          await path_provider.getApplicationDocumentsDirectory();
+      final String path = join(documentsDirectory.path, 'calendar.db');
+
+      if (Platform.isAndroid) {
+        // Use regular sqflite for Android
+        return await openDatabase(
+          path,
+          version: 1,
+          onCreate: _onCreate,
+        );
+      } else {
+        // Use FFI for other platforms
+        final factory = databaseFactoryFfi;
+        return await factory.openDatabase(
+          path,
+          options: OpenDatabaseOptions(
+            version: 1,
+            onCreate: _onCreate,
+          ),
+        );
+      }
     } catch (e) {
       print('Error initializing database: $e');
       rethrow;
     }
+  }
+
+  Future<void> _onCreate(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableName(
+        id TEXT PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        password TEXT NOT NULL,
+        photoUrl TEXT,
+        preferences TEXT
+      )
+    ''');
   }
 
   String _hashPassword(String password) {
