@@ -74,11 +74,21 @@ Common Android-specific features:
 
 ### iOS Development
 
-For iOS development setup, ensure you have:
-- Xcode 15.0 or later
-- iOS Simulator
-- CocoaPods installed
-- Valid Apple Developer account (for physical device testing)
+For detailed iOS development setup instructions, see [iOS Development Guide](ios/README.md).
+
+Key requirements for iOS development:
+- macOS 13.0 or later
+- Xcode 14.0 or later
+- CocoaPods package manager
+- iOS Simulator or physical device running iOS 14.0+
+- Apple Developer account (free for development)
+
+Common iOS-specific features:
+- Native UI components and animations
+- Local data persistence with SQLite
+- iOS-specific permissions handling
+- Universal app support (iPhone and iPad)
+- Proper signing and provisioning profile setup
 
 ## 📱 Usage
 
