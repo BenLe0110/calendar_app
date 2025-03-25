@@ -39,7 +39,7 @@ A modern, user-friendly calendar application built with Flutter that mirrors the
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/calendar_app.git
+git clone https://github.com/BenLe0110/calendar_app.git
 cd calendar_app
 ```
 
@@ -114,37 +114,48 @@ The project follows a clean architecture pattern with the following structure:
 
 ```
 lib/
-├── models/      # Data models
-├── screens/     # UI screens
-├── services/    # Business logic
-├── theme/       # App theming
-├── utils/       # Utility functions
-└── widgets/     # Reusable components
+├── models/      # Data models and database entities
+├── screens/     # UI screens and platform-specific adaptations
+├── services/    # Business logic and platform services
+├── theme/       # App theming and styling
+├── utils/       # Utility functions and platform helpers
+└── widgets/     # Reusable components and platform-specific widgets
 ```
 
-For detailed information about the project structure, see [lib/README.md](calendar_app/lib/README.md).
+For detailed information about the project structure, see [lib/README.md](lib/README.md).
 
 ## 🔧 Platform-Specific Development
 
 ### Android
 - Located in `android/` directory
 - Uses Gradle for build system
-- Supports multiple Android API levels
-- Implements platform-specific features
+- Supports multiple Android API levels (8.0+)
+- SQLite implementation for local storage
+- Material Design components
+- Android-specific permissions handling
+- Custom Android manifest configurations
 
 ### iOS
 - Located in `ios/` directory
 - Uses CocoaPods for dependency management
 - Supports iOS 14 and above
-- Implements platform-specific features
+- Universal app support (iPhone and iPad)
+- Native UI components and animations
+- iOS-specific permissions handling
+- Proper signing and provisioning setup
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+2. Create your feature branch using the format:
+   - For features: `feature/feature-name`
+   - For bugs: `bugfix/bug-name`
+   - For tickets: `ticketnumber/ticket-name` (e.g., `MVP-006/ios-platform-support`)
+3. Commit your changes using semantic commit messages:
+   - Format: `[Ticket-Number]: Brief description`
+   - Example: `MVP-006: Add iOS platform support`
+4. Push to the branch (`git push origin your-branch-name`)
+5. Create a Pull Request with detailed description
 
 ## 📄 License
 
@@ -162,4 +173,4 @@ For support, please open an issue in the GitHub repository or contact the develo
 
 ---
 
-Made with ❤️ by [Your Name/Team] 
+Made with ❤️ by Ben Le and the Calendar App Team 
