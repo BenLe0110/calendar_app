@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:table_calendar/table_calendar.dart';
-import '../widgets/daily_view.dart';
-import '../widgets/monthly_view.dart';
-import '../widgets/loading_animation.dart';
-import '../widgets/status_animation.dart';
-import '../models/event.dart';
-import '../services/event_service.dart';
-import '../services/auth_service.dart';
-import '../theme/app_theme.dart';
+import 'package:calendar_app/models/event.dart';
+import 'package:calendar_app/services/event_service.dart';
+import 'package:calendar_app/theme/app_theme.dart';
+import 'package:calendar_app/widgets/common/animations/loading_animation.dart';
+import 'package:calendar_app/widgets/common/animations/status_animation.dart';
+import 'package:calendar_app/widgets/calendar/views/daily_view.dart';
+import 'package:calendar_app/widgets/calendar/views/monthly_view.dart';
+import 'package:calendar_app/services/auth_service.dart';
+import 'package:calendar_app/services/logging_service.dart';
+import 'package:logging/logging.dart';
 import 'event_form_screen.dart';
 import 'login_screen.dart';
 import 'register_screen.dart';
@@ -22,6 +23,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final EventService _eventService = EventService();
   final AuthService _authService = AuthService();
+  final _log = LoggingService.getLogger('HomeScreen');
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
   bool _isMonthlyView = false;
@@ -33,20 +35,33 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _initialize();
+    _log.info('Initializing HomeScreen');
+    // Delay initialization to avoid build phase issues
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initialize();
+    });
   }
 
   Future<void> _initialize() async {
+    if (!mounted) return;
+
     try {
       setState(() {
         _isLoading = true;
       });
-      await Future.wait([
-        _loadEvents(),
-        _checkAuthState(),
-      ]);
-    } catch (e) {
-      _showStatusMessage('Failed to initialize app', false);
+
+      // Check auth state first
+      await _checkAuthState();
+
+      // Only load events if we're still mounted
+      if (mounted) {
+        await _loadEvents();
+      }
+    } catch (e, stackTrace) {
+      _log.severe('Error initializing home screen', e, stackTrace);
+      if (mounted) {
+        _showStatusMessage('Failed to initialize app', false);
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -57,54 +72,63 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _checkAuthState() async {
-    final user = await _authService.getCurrentUser();
-    if (mounted) {
-      setState(() {
-        _isLoggedIn = user != null;
-      });
-    }
-  }
-
-  Future<void> _loadEvents() async {
-    await _eventService.loadEvents();
-  }
-
-  Future<void> _addEvent() async {
-    if (!_isLoggedIn) {
-      _showAuthDialog();
-      return;
-    }
-
-    final event = await Navigator.push<Event>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => EventFormScreen(
-          selectedDate: _selectedDay,
-        ),
-      ),
-    );
-
-    if (event != null) {
-      setState(() {
-        _isLoading = true;
-      });
-      try {
-        await _eventService.insertEvent(event);
-        _showStatusMessage('Event added successfully', true);
-        await _loadEvents();
-      } catch (e) {
-        _showStatusMessage('Failed to add event', false);
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
+    try {
+      _log.info('Checking authentication state');
+      final user = await _authService.getCurrentUser();
+      if (mounted) {
+        setState(() {
+          _isLoggedIn = user != null;
+        });
+        _log.info(
+            'Auth state updated: ${_isLoggedIn ? 'Logged in' : 'Not logged in'}');
+      }
+    } catch (e, stackTrace) {
+      _log.severe('Error checking auth state', e, stackTrace);
+      if (mounted) {
+        setState(() {
+          _isLoggedIn = false;
+        });
       }
     }
   }
 
+  Future<void> _loadEvents() async {
+    try {
+      _log.info('Loading events for selected day: $_selectedDay');
+      await _eventService.loadEvents();
+      _log.info('Events loaded successfully');
+    } catch (e, stackTrace) {
+      _log.severe('Error loading events', e, stackTrace);
+      if (mounted) {
+        _showStatusMessage('Failed to load events', false);
+      }
+    }
+  }
+
+  Future<void> _addEvent() async {
+    _log.info('Opening event form for date: $_selectedDay');
+    // Allow event creation without login
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EventFormScreen(
+          selectedDate: _selectedDay,
+          isLoggedIn: _isLoggedIn,
+        ),
+      ),
+    );
+
+    if (result == true) {
+      _log.info('Event form returned success, reloading events');
+      await _loadEvents();
+      _showStatusMessage('Event added successfully', true);
+    } else {
+      _log.info('Event form returned without success');
+    }
+  }
+
   void _showStatusMessage(String message, bool isSuccess) {
+    _log.info('Showing status message: $message (Success: $isSuccess)');
     setState(() {
       _statusMessage = message;
       _isSuccess = isSuccess;
@@ -120,30 +144,32 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showAuthDialog() {
+    _log.info('Showing authentication dialog');
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Sign In Required'),
-        content:
-            const Text('Please sign in or create an account to add events.'),
+        title: const Text('Login Required'),
+        content: const Text(
+          'Login is required to sync with external calendars (Google, Outlook, iCloud).',
+        ),
         actions: [
           TextButton(
             onPressed: () {
+              _log.info('Auth dialog cancelled');
               Navigator.pop(context);
-              Navigator.pushNamed(context, '/login');
             },
-            child: const Text('Sign In'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
+              _log.info('Auth dialog: Proceeding to login screen');
               Navigator.pop(context);
-              Navigator.pushNamed(context, '/register');
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+              );
             },
-            child: const Text('Create Account'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('Login'),
           ),
         ],
       ),
@@ -152,6 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _logout() async {
     try {
+      _log.info('Initiating logout process');
       setState(() {
         _isLoading = true;
       });
@@ -159,8 +186,10 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _isLoggedIn = false;
       });
+      _log.info('Logout successful');
       _showStatusMessage('Logged out successfully', true);
-    } catch (e) {
+    } catch (e, stackTrace) {
+      _log.severe('Error during logout', e, stackTrace);
       _showStatusMessage('Failed to logout', false);
     } finally {
       if (mounted) {
@@ -173,6 +202,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    _log.fine('Building HomeScreen');
     return Scaffold(
       appBar: AppBar(
         title: const Text('Calendar'),
@@ -207,6 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         IconButton(
                           icon: const Icon(Icons.chevron_left),
                           onPressed: () {
+                            _log.fine('Navigating to previous day');
                             setState(() {
                               _selectedDay = _selectedDay.subtract(
                                 const Duration(days: 1),
@@ -218,6 +249,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         IconButton(
                           icon: const Icon(Icons.chevron_right),
                           onPressed: () {
+                            _log.fine('Navigating to next day');
                             setState(() {
                               _selectedDay = _selectedDay.add(
                                 const Duration(days: 1),
@@ -231,6 +263,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               ? Icons.calendar_today
                               : Icons.calendar_month),
                           onPressed: () {
+                            _log.info(
+                                'Switching view mode to: ${_isMonthlyView ? 'daily' : 'monthly'}');
                             setState(() {
                               _isMonthlyView = !_isMonthlyView;
                             });
@@ -275,8 +309,7 @@ class _HomeScreenState extends State<HomeScreen> {
               color: Colors.black.withOpacity(0.3),
               child: const Center(
                 child: LoadingAnimation(
-                  color: Colors.white,
-                  size: 48,
+                  duration: const Duration(milliseconds: 500),
                 ),
               ),
             ),

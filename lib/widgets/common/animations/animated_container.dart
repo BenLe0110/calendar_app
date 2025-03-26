@@ -1,35 +1,35 @@
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
+import 'package:calendar_app/theme/app_theme.dart';
 
 class CustomAnimatedContainer extends StatelessWidget {
-  final Widget child;
-  final Duration duration;
-  final Curve curve;
-  final EdgeInsets? padding;
-  final EdgeInsets? margin;
-  final BoxDecoration? decoration;
+  final Widget? child;
+  final EdgeInsetsGeometry? padding;
+  final EdgeInsetsGeometry? margin;
   final BoxConstraints? constraints;
+  final BoxDecoration? decoration;
+  final Duration? duration;
+  final double? height;
 
   const CustomAnimatedContainer({
     super.key,
-    required this.child,
-    this.duration = AppTheme.animationDurationNormal,
-    this.curve = AppTheme.easeInOutCurve,
+    this.child,
     this.padding,
     this.margin,
-    this.decoration,
     this.constraints,
+    this.decoration,
+    this.duration,
+    this.height,
   });
 
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration: duration,
-      curve: curve,
+      duration: duration ?? const Duration(milliseconds: 300),
       padding: padding,
       margin: margin,
-      decoration: decoration,
       constraints: constraints,
+      decoration: decoration,
+      height: height,
       child: child,
     );
   }

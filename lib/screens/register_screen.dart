@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
-import '../services/auth_service.dart';
-import '../models/user.dart';
+import 'package:calendar_app/services/auth_service.dart';
+import 'package:calendar_app/services/logging_service.dart';
+import 'package:calendar_app/models/user.dart';
+import 'login_screen.dart';
+import 'package:logging/logging.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -16,10 +19,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _authService = AuthService();
+  final _log = LoggingService.getLogger('RegisterScreen');
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    _log.info('Initializing RegisterScreen');
+  }
+
+  @override
   void dispose() {
+    _log.fine('Disposing RegisterScreen');
     _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
@@ -28,8 +39,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      _log.warning('Registration form validation failed');
+      return;
+    }
 
+    _log.info('Attempting registration for email: ${_emailController.text}');
     setState(() => _isLoading = true);
 
     try {
@@ -40,12 +55,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       if (user != null && mounted) {
+        _log.info('Registration successful, navigating to home screen');
         Navigator.pushReplacementNamed(context, '/home');
       } else if (mounted) {
+        _log.warning('Registration failed: Email might already be in use');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content:
                 Text('Registration failed. Email might already be in use.'),
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      _log.severe('Error during registration', e, stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('An error occurred during registration'),
           ),
         );
       }
@@ -58,6 +84,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    _log.fine('Building RegisterScreen');
     return Scaffold(
       appBar: AppBar(
         title: const Text('Register'),
@@ -159,6 +186,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   onPressed: _isLoading
                       ? null
                       : () {
+                          _log.info('Navigating back to login screen');
                           Navigator.pop(context);
                         },
                   child: const Text('Already have an account? Login'),

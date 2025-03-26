@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
+import 'package:calendar_app/theme/app_theme.dart';
 
 class LoadingAnimation extends StatefulWidget {
   final Color? color;
