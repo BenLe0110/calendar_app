@@ -25,13 +25,14 @@ class AuthService {
   static const String userPreferencesTable = 'user_preferences';
   static String? _currentUserId;
   final _log = LoggingService.getLogger('AuthService');
+  final String? _customDatabasePath;
 
-  factory AuthService() {
-    _instance ??= AuthService._internal();
+  factory AuthService({String? customDatabasePath}) {
+    _instance ??= AuthService._internal(customDatabasePath);
     return _instance!;
   }
 
-  AuthService._internal();
+  AuthService._internal(this._customDatabasePath);
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -42,9 +43,15 @@ class AuthService {
   Future<Database> _initDatabase() async {
     try {
       _log.info('Starting database initialization...');
-      final Directory documentsDirectory =
-          await path_provider.getApplicationDocumentsDirectory();
-      final String path = join(documentsDirectory.path, 'calendar.db');
+      String path;
+
+      if (_customDatabasePath != null) {
+        path = _customDatabasePath!;
+      } else {
+        final Directory documentsDirectory =
+            await path_provider.getApplicationDocumentsDirectory();
+        path = join(documentsDirectory.path, 'calendar.db');
+      }
       _log.info('Database path: $path');
 
       if (Platform.isAndroid) {
@@ -159,7 +166,7 @@ class AuthService {
     }
   }
 
-  Future<User?> login(String email, String password) async {
+  Future<User?> login({required String email, required String password}) async {
     try {
       final db = await database;
       final hashedPassword = _hashPassword(password);
@@ -180,7 +187,7 @@ class AuthService {
       return User.fromMap(maps.first);
     } catch (e, stackTrace) {
       _log.severe('Error during login', e, stackTrace);
-      rethrow;
+      return null;
     }
   }
 
@@ -195,11 +202,19 @@ class AuthService {
     }
   }
 
-  Future<User> register(String email, String name, String password) async {
+  Future<User> register({
+    required String email,
+    required String name,
+    required String password,
+  }) async {
     try {
+      if (email.isEmpty || name.isEmpty || password.isEmpty) {
+        throw AuthException('Email, name, and password cannot be empty');
+      }
+
       final db = await database;
       final hashedPassword = _hashPassword(password);
-      final id = DateTime.now().millisecondsSinceEpoch.toString();
+      final id = const Uuid().v4();
 
       final user = User(
         id: id,
@@ -247,21 +262,24 @@ class AuthService {
     }
   }
 
-  Future<bool> resetPassword(String email) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      tableName,
-      where: 'email = ?',
-      whereArgs: [email],
-    );
+  Future<bool> resetPassword(
+      {required String email, required String newPassword}) async {
+    try {
+      final db = await database;
+      final hashedPassword = _hashPassword(newPassword);
 
-    if (maps.isEmpty) return false;
+      final result = await db.update(
+        tableName,
+        {'password': hashedPassword},
+        where: 'email = ?',
+        whereArgs: [email],
+      );
 
-    // In a real app, you would:
-    // 1. Generate a reset token
-    // 2. Send an email with the reset link
-    // 3. Store the token with an expiration time
-    return true;
+      return result > 0;
+    } catch (e, stackTrace) {
+      _log.severe('Error resetting password', e, stackTrace);
+      return false;
+    }
   }
 
   Future<void> updateUserPreferences(
@@ -292,5 +310,12 @@ class AuthService {
 
   String? getCurrentUserId() {
     return _currentUserId;
+  }
+
+  Future<void> close() async {
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+    }
   }
 }

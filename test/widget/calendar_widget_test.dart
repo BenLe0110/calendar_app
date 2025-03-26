@@ -1,189 +1,188 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:calendar_app/widgets/calendar_widget.dart';
 import 'package:calendar_app/models/event.dart';
+import 'package:calendar_app/widgets/calendar/calendar_view.dart';
+import 'package:calendar_app/widgets/calendar/views/daily_view.dart';
+import 'package:calendar_app/widgets/calendar/views/monthly_view.dart';
+import 'package:calendar_app/widgets/calendar/events/event_widget.dart';
+import 'package:intl/intl.dart';
+
+// Mock events for testing
+final List<Event> mockEvents = [
+  Event(
+    id: '1',
+    title: 'Morning Meeting',
+    description: 'Team sync',
+    startDate: DateTime(2024, 3, 15, 9, 0),
+    endDate: DateTime(2024, 3, 15, 10, 0),
+    color: Colors.blue,
+    isAllDay: false,
+  ),
+  Event(
+    id: '2',
+    title: 'All Day Event',
+    description: 'Company holiday',
+    startDate: DateTime(2024, 3, 15),
+    endDate: DateTime(2024, 3, 15, 23, 59),
+    color: Colors.red,
+    isAllDay: true,
+  ),
+  Event(
+    id: '3',
+    title: 'Evening Meeting',
+    description: 'Project review',
+    startDate: DateTime(2024, 3, 15, 14, 0),
+    endDate: DateTime(2024, 3, 15, 15, 0),
+    color: Colors.green,
+    isAllDay: false,
+  ),
+];
 
 void main() {
-  late List<Event> testEvents;
-  late DateTime testDate;
+  group('Calendar Widget Tests', () {
+    late DateTime testDate;
 
-  setUp(() {
-    testDate = DateTime(2024, 3, 15);
-    testEvents = [
-      Event(
-        id: 1,
-        title: 'Test Event 1',
-        description: 'Test Description 1',
-        startDate: DateTime(2024, 3, 15, 10, 0),
-        endDate: DateTime(2024, 3, 15, 11, 0),
-        userId: 1,
-      ),
-      Event(
-        id: 2,
-        title: 'Test Event 2',
-        description: 'Test Description 2',
-        startDate: DateTime(2024, 3, 20, 14, 0),
-        endDate: DateTime(2024, 3, 20, 15, 0),
-        userId: 1,
-      ),
-    ];
-  });
-
-  group('CalendarWidget Tests', () {
-    testWidgets('should display weekday headers', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: CalendarWidget(
-              selectedDate: testDate,
-              events: testEvents,
-              onDateSelected: (date) {},
-              onEventTap: (event) {},
-            ),
-          ),
-        ),
-      );
-
-      expect(find.text('Mon'), findsOneWidget);
-      expect(find.text('Tue'), findsOneWidget);
-      expect(find.text('Wed'), findsOneWidget);
-      expect(find.text('Thu'), findsOneWidget);
-      expect(find.text('Fri'), findsOneWidget);
-      expect(find.text('Sat'), findsOneWidget);
-      expect(find.text('Sun'), findsOneWidget);
+    setUp(() {
+      testDate = DateTime(2024, 3, 15);
     });
 
-    testWidgets('should display days of the month',
+    testWidgets('should initialize calendar with correct date',
         (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: CalendarWidget(
+            body: CalendarView(
+              initialView: CalendarViewType.monthly,
               selectedDate: testDate,
-              events: testEvents,
-              onDateSelected: (date) {},
-              onEventTap: (event) {},
+              events: mockEvents,
             ),
           ),
         ),
       );
 
-      expect(find.text('15'), findsOneWidget);
-      expect(find.text('20'), findsOneWidget);
+      // Verify month and year are displayed correctly
+      expect(find.text('March 2024'), findsOneWidget);
     });
 
-    testWidgets('should highlight selected date', (WidgetTester tester) async {
+    testWidgets('should display event indicators in monthly view',
+        (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: CalendarWidget(
+            body: CalendarView(
+              initialView: CalendarViewType.monthly,
               selectedDate: testDate,
-              events: testEvents,
-              onDateSelected: (date) {},
-              onEventTap: (event) {},
+              events: mockEvents,
             ),
           ),
         ),
       );
 
-      final selectedDay = find.text('15');
-      expect(selectedDay, findsOneWidget);
+      // Verify event indicator is present for day 15
+      expect(
+        find.byKey(Key('eventIndicator-2024-03-15')),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('should show event indicators', (WidgetTester tester) async {
+    testWidgets('should switch between daily and monthly views',
+        (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: CalendarWidget(
+            body: CalendarView(
+              initialView: CalendarViewType.monthly,
               selectedDate: testDate,
-              events: testEvents,
-              onDateSelected: (date) {},
-              onEventTap: (event) {},
+              events: mockEvents,
             ),
           ),
         ),
       );
 
-      // Find containers with event indicators
-      final eventIndicators =
-          find.byType(Container).evaluate().where((element) {
-        final widget = element.widget as Container;
-        final decoration = widget.decoration as BoxDecoration?;
-        return decoration?.color == Colors.blue;
-      });
-
-      expect(eventIndicators.length, 2);
-    });
-
-    testWidgets('should handle date selection', (WidgetTester tester) async {
-      DateTime? selectedDate;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: CalendarWidget(
-              selectedDate: testDate,
-              events: testEvents,
-              onDateSelected: (date) {
-                selectedDate = date;
-              },
-              onEventTap: (event) {},
-            ),
-          ),
-        ),
-      );
-
-      await tester.tap(find.text('20'));
+      // Find and tap the view switch button
+      await tester.tap(find.byKey(const Key('viewSwitchButton')));
       await tester.pumpAndSettle();
 
-      expect(selectedDate?.day, 20);
-      expect(selectedDate?.month, 3);
-      expect(selectedDate?.year, 2024);
+      // Verify we're in daily view
+      expect(find.text('March 15'), findsOneWidget);
+
+      // Switch back to monthly view
+      await tester.tap(find.byKey(const Key('viewSwitchButton')));
+      await tester.pumpAndSettle();
+
+      // Verify we're back in monthly view
+      expect(find.text('March 2024'), findsOneWidget);
     });
 
-    testWidgets('should handle event tap', (WidgetTester tester) async {
-      Event? tappedEvent;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: CalendarWidget(
-              selectedDate: testDate,
-              events: testEvents,
-              onDateSelected: (date) {},
-              onEventTap: (event) {
-                tappedEvent = event;
-              },
-            ),
-          ),
-        ),
-      );
-
-      // Note: Event tap functionality is not directly testable in this widget
-      // as it's handled by the parent widget (MainScreen)
-      expect(tappedEvent, null);
-    });
-
-    testWidgets('should display days from previous and next month',
+    testWidgets('should handle day navigation in daily view',
         (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: CalendarWidget(
+            body: CalendarView(
+              initialView: CalendarViewType.daily,
               selectedDate: testDate,
-              events: testEvents,
-              onDateSelected: (date) {},
-              onEventTap: (event) {},
+              events: mockEvents,
             ),
           ),
         ),
       );
 
-      // Find days from previous month (should be grayed out)
-      final previousMonthDays = find.byType(Text).evaluate().where((element) {
-        final widget = element.widget as Text;
-        return widget.style?.color == Colors.grey;
-      });
+      await tester.pumpAndSettle();
 
-      expect(previousMonthDays.isNotEmpty, true);
+      // Initial date should be March 15
+      expect(find.text('March 15'), findsOneWidget);
+
+      // Find the GestureDetector that's a direct child of Material
+      final gestureDetector = find
+          .descendant(
+            of: find.byType(Material),
+            matching: find.byType(GestureDetector),
+            matchRoot: true,
+          )
+          .first;
+
+      // Swipe left to next day
+      await tester.fling(
+        gestureDetector,
+        const Offset(-100, 0),
+        1000,
+      );
+      await tester.pumpAndSettle();
+
+      // Next day should be March 16
+      expect(find.text('March 16'), findsOneWidget);
+
+      // Swipe right to previous day
+      await tester.fling(
+        gestureDetector,
+        const Offset(100, 0),
+        1000,
+      );
+      await tester.pumpAndSettle();
+
+      // Previous day should be March 15
+      expect(find.text('March 15'), findsOneWidget);
+    });
+
+    testWidgets('should display events in daily view',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CalendarView(
+              initialView: CalendarViewType.daily,
+              selectedDate: testDate,
+              events: mockEvents,
+            ),
+          ),
+        ),
+      );
+
+      // Verify all events for the day are displayed
+      expect(find.text('Morning Meeting'), findsOneWidget);
+      expect(find.text('All Day Event'), findsOneWidget);
+      expect(find.text('Evening Meeting'), findsOneWidget);
     });
   });
 }

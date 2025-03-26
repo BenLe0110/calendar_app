@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:calendar_app/models/event.dart';
 import 'package:calendar_app/widgets/calendar_widget.dart';
-import 'package:calendar_app/widgets/event_details.dart';
+import 'package:calendar_app/widgets/calendar/events/event_details.dart';
 import 'package:intl/intl.dart';
 
 class MainScreen extends StatefulWidget {
