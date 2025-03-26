@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import '../services/auth_service.dart';
-import '../models/user.dart';
+import 'package:calendar_app/services/auth_service.dart';
+import 'package:calendar_app/services/logging_service.dart';
+import 'package:calendar_app/models/user.dart';
 import 'home_screen.dart';
 import 'register_screen.dart';
+import 'package:logging/logging.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,18 +18,30 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _authService = AuthService();
+  final _log = LoggingService.getLogger('LoginScreen');
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    _log.info('Initializing LoginScreen');
+  }
+
+  @override
   void dispose() {
+    _log.fine('Disposing LoginScreen');
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      _log.warning('Login form validation failed');
+      return;
+    }
 
+    _log.info('Attempting login for email: ${_emailController.text}');
     setState(() => _isLoading = true);
 
     try {
@@ -37,11 +51,22 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (user != null && mounted) {
+        _log.info('Login successful, navigating to home screen');
         Navigator.pushReplacementNamed(context, '/home');
       } else if (mounted) {
+        _log.warning('Login failed: Invalid email or password');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Invalid email or password'),
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      _log.severe('Error during login', e, stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('An error occurred during login'),
           ),
         );
       }
@@ -53,12 +78,17 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _resetPassword() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      _log.warning('Password reset form validation failed');
+      return;
+    }
 
+    _log.info('Attempting password reset for email: ${_emailController.text}');
     setState(() => _isLoading = true);
 
     try {
       final success = await _authService.resetPassword(_emailController.text);
+      _log.info('Password reset request ${success ? 'successful' : 'failed'}');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -67,6 +97,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   ? 'Password reset instructions sent to your email'
                   : 'Email not found',
             ),
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      _log.severe('Error during password reset', e, stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('An error occurred while resetting password'),
           ),
         );
       }
@@ -79,6 +118,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    _log.fine('Building LoginScreen');
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
@@ -153,6 +193,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: _isLoading
                       ? null
                       : () {
+                          _log.info('Navigating to registration screen');
                           Navigator.pushNamed(context, '/register');
                         },
                   child: const Text('Don\'t have an account? Register'),

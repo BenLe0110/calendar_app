@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
-import '../models/event.dart';
+import 'package:calendar_app/models/event.dart';
+import 'package:calendar_app/services/event_service.dart';
+import 'package:calendar_app/services/logging_service.dart';
+import 'package:uuid/uuid.dart';
+import 'package:logging/logging.dart';
+import 'package:calendar_app/theme/app_theme.dart';
 
 class EventFormScreen extends StatefulWidget {
   final DateTime selectedDate;
+  final bool isLoggedIn;
 
   const EventFormScreen({
     super.key,
     required this.selectedDate,
+    required this.isLoggedIn,
   });
 
   @override
@@ -17,108 +24,126 @@ class _EventFormScreenState extends State<EventFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  DateTime _startTime = DateTime.now();
-  DateTime? _endTime;
-  Color _selectedColor = Colors.blue;
+  final _eventService = EventService();
+  final _log = LoggingService.getLogger('EventFormScreen');
+  late DateTime _startDate;
+  late DateTime _endDate;
   bool _isAllDay = false;
 
   @override
   void initState() {
     super.initState();
-    _startTime = DateTime(
-      widget.selectedDate.year,
-      widget.selectedDate.month,
-      widget.selectedDate.day,
-      DateTime.now().hour,
-      DateTime.now().minute,
-    );
+    _log.info('Initializing EventFormScreen for date: ${widget.selectedDate}');
+    _startDate = widget.selectedDate;
+    _endDate = widget.selectedDate.add(const Duration(hours: 1));
   }
 
   @override
   void dispose() {
+    _log.fine('Disposing EventFormScreen');
     _titleController.dispose();
     _descriptionController.dispose();
     super.dispose();
   }
 
-  Future<void> _selectDateTime(BuildContext context, bool isStartTime) async {
-    if (_isAllDay) {
-      final DateTime? date = await showDatePicker(
-        context: context,
-        initialDate: isStartTime ? _startTime : (_endTime ?? _startTime),
-        firstDate: DateTime(2020),
-        lastDate: DateTime(2030),
-      );
-
-      if (date != null) {
-        setState(() {
-          if (isStartTime) {
-            _startTime = date;
-          } else {
-            _endTime = date;
-          }
-        });
-      }
-    } else {
-      final DateTime? date = await showDatePicker(
-        context: context,
-        initialDate: isStartTime ? _startTime : (_endTime ?? _startTime),
-        firstDate: DateTime(2020),
-        lastDate: DateTime(2030),
-      );
-
-      if (date != null) {
-        final TimeOfDay? time = await showTimePicker(
-          context: context,
-          initialTime: TimeOfDay.fromDateTime(
-            isStartTime ? _startTime : (_endTime ?? _startTime),
-          ),
+  Future<void> _saveEvent() async {
+    if (_formKey.currentState!.validate()) {
+      if (_endDate.isBefore(_startDate)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('End date must be after start date')),
         );
+        return;
+      }
 
-        if (time != null) {
-          setState(() {
-            final DateTime dateTime = DateTime(
-              date.year,
-              date.month,
-              date.day,
-              time.hour,
-              time.minute,
-            );
-            if (isStartTime) {
-              _startTime = dateTime;
-            } else {
-              _endTime = dateTime;
-            }
-          });
+      _log.info('Saving new event: ${_titleController.text}');
+      final event = Event(
+        id: const Uuid().v4(), // Generate a new UUID for the event
+        title: _titleController.text,
+        description: _descriptionController.text,
+        startDate: _startDate,
+        endDate: _endDate,
+        isAllDay: _isAllDay,
+        color: Colors.blue,
+        userId: widget.isLoggedIn
+            ? const Uuid().v4()
+            : null, // Generate a new UUID for the user
+      );
+
+      try {
+        await _eventService.insertEvent(event);
+        _log.info('Event saved successfully');
+        if (mounted) {
+          Navigator.pop(context, true);
+        }
+      } catch (e, stackTrace) {
+        _log.severe('Failed to save event', e, stackTrace);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to save event')),
+          );
         }
       }
+    } else {
+      _log.warning('Form validation failed');
     }
   }
 
-  void _submitForm() {
-    if (_formKey.currentState!.validate()) {
-      final event = Event(
-        title: _titleController.text,
-        description: _descriptionController.text,
-        startTime: _startTime,
-        endTime: _endTime,
-        color: _selectedColor,
-        isAllDay: _isAllDay,
+  Future<void> _selectDateTime(bool isStartDate) async {
+    final DateTime? date = await showDatePicker(
+      context: context,
+      initialDate: isStartDate ? _startDate : _endDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+
+    if (date != null) {
+      final TimeOfDay? time = await showTimePicker(
+        context: context,
+        initialTime:
+            TimeOfDay.fromDateTime(isStartDate ? _startDate : _endDate),
       );
-      Navigator.pop(context, event);
+
+      if (time != null) {
+        setState(() {
+          final DateTime newDateTime = DateTime(
+            date.year,
+            date.month,
+            date.day,
+            time.hour,
+            time.minute,
+          );
+
+          if (isStartDate) {
+            _startDate = newDateTime;
+            if (_endDate.isBefore(_startDate)) {
+              _endDate = _startDate.add(const Duration(hours: 1));
+            }
+          } else {
+            if (newDateTime.isBefore(_startDate)) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text('End date must be after start date')),
+              );
+              return;
+            }
+            _endDate = newDateTime;
+          }
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    _log.fine('Building EventFormScreen');
     return Scaffold(
       appBar: AppBar(
-        title: const Text('New Event'),
+        title: const Text('Add Event'),
       ),
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(16),
           children: [
             TextFormField(
               controller: _titleController,
@@ -144,84 +169,58 @@ class _EventFormScreenState extends State<EventFormScreen> {
             ),
             const SizedBox(height: 16),
             SwitchListTile(
-              title: const Text('All Day Event'),
+              title: const Text('All Day'),
               value: _isAllDay,
-              onChanged: (bool value) {
+              onChanged: (value) {
+                _log.info('All day event toggled: $value');
                 setState(() {
                   _isAllDay = value;
                   if (value) {
-                    _startTime = DateTime(
-                      _startTime.year,
-                      _startTime.month,
-                      _startTime.day,
-                    );
-                    if (_endTime != null) {
-                      _endTime = DateTime(
-                        _endTime!.year,
-                        _endTime!.month,
-                        _endTime!.day,
-                      );
-                    }
+                    _startDate = DateTime(
+                        _startDate.year, _startDate.month, _startDate.day);
+                    _endDate =
+                        DateTime(_endDate.year, _endDate.month, _endDate.day);
                   }
                 });
               },
             ),
             ListTile(
+              title: const Text('Start Date'),
+              subtitle: Text(_startDate.toString()),
+              onTap: () async {
+                _log.fine('Opening start date picker');
+                await _selectDateTime(true);
+              },
+            ),
+            ListTile(
               title: const Text('Start Time'),
-              subtitle: Text(_isAllDay
-                  ? '${_startTime.year}-${_startTime.month}-${_startTime.day}'
-                  : '${_startTime.year}-${_startTime.month}-${_startTime.day} ${_startTime.hour}:${_startTime.minute}'),
-              onTap: () => _selectDateTime(context, true),
+              subtitle: Text(_startDate.toString()),
+              enabled: !_isAllDay,
+              onTap: () async {
+                _log.fine('Opening start time picker');
+                await _selectDateTime(true);
+              },
+            ),
+            ListTile(
+              title: const Text('End Date'),
+              subtitle: Text(_endDate.toString()),
+              onTap: () async {
+                _log.fine('Opening end date picker');
+                await _selectDateTime(false);
+              },
             ),
             ListTile(
               title: const Text('End Time'),
-              subtitle: Text(_endTime == null
-                  ? 'No end time'
-                  : _isAllDay
-                      ? '${_endTime!.year}-${_endTime!.month}-${_endTime!.day}'
-                      : '${_endTime!.year}-${_endTime!.month}-${_endTime!.day} ${_endTime!.hour}:${_endTime!.minute}'),
-              onTap: () => _selectDateTime(context, false),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<Color>(
-              value: _selectedColor,
-              decoration: const InputDecoration(
-                labelText: 'Color',
-                border: OutlineInputBorder(),
-              ),
-              items: [
-                Colors.blue,
-                Colors.red,
-                Colors.green,
-                Colors.orange,
-                Colors.purple,
-              ].map((Color color) {
-                return DropdownMenuItem<Color>(
-                  value: color,
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 24,
-                        height: 24,
-                        color: color,
-                        margin: const EdgeInsets.only(right: 8),
-                      ),
-                      Text(color.toString()),
-                    ],
-                  ),
-                );
-              }).toList(),
-              onChanged: (Color? newValue) {
-                if (newValue != null) {
-                  setState(() {
-                    _selectedColor = newValue;
-                  });
-                }
+              subtitle: Text(_endDate.toString()),
+              enabled: !_isAllDay,
+              onTap: () async {
+                _log.fine('Opening end time picker');
+                await _selectDateTime(false);
               },
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _submitForm,
+              onPressed: _saveEvent,
               child: const Text('Save Event'),
             ),
           ],

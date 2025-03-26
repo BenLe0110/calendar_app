@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
-import '../models/event.dart';
-import '../services/event_service.dart';
-import '../theme/app_theme.dart';
-import 'spacing.dart';
-import 'animated_container.dart';
+import 'package:calendar_app/models/event.dart';
+import 'package:calendar_app/services/event_service.dart';
+import 'package:calendar_app/theme/app_theme.dart';
+import 'package:calendar_app/widgets/common/animations/spacing.dart';
+import 'package:calendar_app/widgets/common/animations/animated_container.dart';
+import 'package:calendar_app/widgets/calendar/events/event_widget.dart';
 
 class MonthlyView extends StatefulWidget {
   final DateTime focusedDay;
@@ -60,17 +61,17 @@ class _MonthlyViewState extends State<MonthlyView> {
     for (var event in events) {
       if (event.isAllDay) {
         final day = DateTime(
-          event.startTime.year,
-          event.startTime.month,
-          event.startTime.day,
+          event.startDate.year,
+          event.startDate.month,
+          event.startDate.day,
         );
         eventsByDay[day] = [...(eventsByDay[day] ?? []), event];
-      } else if (event.startTime.isAfter(startOfMonth) &&
-          event.startTime.isBefore(endOfMonth)) {
+      } else if (event.startDate.isAfter(startOfMonth) &&
+          event.startDate.isBefore(endOfMonth)) {
         final day = DateTime(
-          event.startTime.year,
-          event.startTime.month,
-          event.startTime.day,
+          event.startDate.year,
+          event.startDate.month,
+          event.startDate.day,
         );
         eventsByDay[day] = [...(eventsByDay[day] ?? []), event];
       }

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
@@ -5,13 +6,32 @@ import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart' as path_provider;
-import '../models/user.dart';
+import 'package:calendar_app/models/user.dart';
+import 'package:calendar_app/services/logging_service.dart';
+import 'package:logging/logging.dart';
+import 'package:uuid/uuid.dart';
+
+class AuthException implements Exception {
+  final String message;
+  AuthException(this.message);
+  @override
+  String toString() => message;
+}
 
 class AuthService {
+  static AuthService? _instance;
   static Database? _database;
   static const String tableName = 'users';
   static const String userPreferencesTable = 'user_preferences';
   static String? _currentUserId;
+  final _log = LoggingService.getLogger('AuthService');
+
+  factory AuthService() {
+    _instance ??= AuthService._internal();
+    return _instance!;
+  }
+
+  AuthService._internal();
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -21,11 +41,14 @@ class AuthService {
 
   Future<Database> _initDatabase() async {
     try {
+      _log.info('Starting database initialization...');
       final Directory documentsDirectory =
           await path_provider.getApplicationDocumentsDirectory();
       final String path = join(documentsDirectory.path, 'calendar.db');
+      _log.info('Database path: $path');
 
       if (Platform.isAndroid) {
+        _log.info('Initializing database for Android platform');
         // Use regular sqflite for Android
         return await openDatabase(
           path,
@@ -33,6 +56,7 @@ class AuthService {
           onCreate: _onCreate,
         );
       } else {
+        _log.info('Initializing database for other platform using FFI');
         // Use FFI for other platforms
         final factory = databaseFactoryFfi;
         return await factory.openDatabase(
@@ -43,23 +67,67 @@ class AuthService {
           ),
         );
       }
-    } catch (e) {
-      print('Error initializing database: $e');
+    } catch (e, stackTrace) {
+      _log.severe('Error initializing database', e, stackTrace);
       rethrow;
     }
   }
 
   Future<void> _onCreate(Database db, int version) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS $tableName(
-        id TEXT PRIMARY KEY,
-        email TEXT UNIQUE NOT NULL,
-        name TEXT NOT NULL,
-        password TEXT NOT NULL,
-        photoUrl TEXT,
-        preferences TEXT
-      )
-    ''');
+    try {
+      _log.info('Creating database tables...');
+
+      _log.info('Creating users table...');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS $tableName(
+          id TEXT PRIMARY KEY,
+          email TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          password TEXT NOT NULL,
+          photoUrl TEXT,
+          preferences TEXT
+        )
+      ''');
+      _log.info('Users table created successfully');
+
+      _log.info('Creating user preferences table...');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS $userPreferencesTable(
+          userId TEXT PRIMARY KEY,
+          preferences TEXT NOT NULL,
+          FOREIGN KEY (userId) REFERENCES $tableName (id)
+        )
+      ''');
+      _log.info('User preferences table created successfully');
+
+      _log.info('Creating preferences table for local ID...');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS preferences(
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        )
+      ''');
+      _log.info('Preferences table created successfully');
+
+      _log.info('Creating events table...');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS events(
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          description TEXT,
+          start_date TEXT NOT NULL,
+          end_date TEXT NOT NULL,
+          is_all_day INTEGER NOT NULL DEFAULT 0,
+          color INTEGER,
+          user_id TEXT,
+          local_id TEXT
+        )
+      ''');
+      _log.info('Events table created successfully');
+    } catch (e, stackTrace) {
+      _log.severe('Error creating database tables', e, stackTrace);
+      rethrow;
+    }
   }
 
   String _hashPassword(String password) {
@@ -85,8 +153,8 @@ class AuthService {
       }
 
       return User.fromMap(maps.first);
-    } catch (e) {
-      print('Error getting current user: $e');
+    } catch (e, stackTrace) {
+      _log.warning('Error getting current user', e, stackTrace);
       return null;
     }
   }
@@ -102,21 +170,27 @@ class AuthService {
         whereArgs: [email, hashedPassword],
       );
 
-      if (maps.isEmpty) return null;
+      if (maps.isEmpty) {
+        _log.info('Login failed for email: $email');
+        return null;
+      }
 
       _currentUserId = maps.first['id'] as String;
+      _log.info('User logged in successfully: $email');
       return User.fromMap(maps.first);
-    } catch (e) {
-      print('Error during login: $e');
+    } catch (e, stackTrace) {
+      _log.severe('Error during login', e, stackTrace);
       rethrow;
     }
   }
 
   Future<void> logout() async {
     try {
+      final oldUserId = _currentUserId;
       _currentUserId = null;
-    } catch (e) {
-      print('Error during logout: $e');
+      _log.info('User logged out successfully: $oldUserId');
+    } catch (e, stackTrace) {
+      _log.severe('Error during logout', e, stackTrace);
       rethrow;
     }
   }
@@ -133,18 +207,42 @@ class AuthService {
         name: name,
       );
 
+      // Check if email already exists
+      final List<Map<String, dynamic>> existingUser = await db.query(
+        tableName,
+        where: 'email = ?',
+        whereArgs: [email],
+      );
+
+      if (existingUser.isNotEmpty) {
+        _log.warning('Registration failed: Email already exists: $email');
+        throw AuthException('Email already exists');
+      }
+
       await db.insert(
         tableName,
         {
-          ...user.toMap(),
+          'id': id,
+          'email': email,
+          'name': name,
           'password': hashedPassword,
         },
         conflictAlgorithm: ConflictAlgorithm.abort,
       );
 
+      // Initialize empty preferences
+      await db.insert(
+        userPreferencesTable,
+        {
+          'userId': id,
+          'preferences': '{}',
+        },
+      );
+
+      _log.info('User registered successfully: $email');
       return user;
-    } catch (e) {
-      print('Error during registration: $e');
+    } catch (e, stackTrace) {
+      _log.severe('Error during registration', e, stackTrace);
       rethrow;
     }
   }
@@ -190,5 +288,9 @@ class AuthService {
     if (maps.isEmpty) return {};
 
     return jsonDecode(maps.first['preferences'] as String);
+  }
+
+  String? getCurrentUserId() {
+    return _currentUserId;
   }
 }
