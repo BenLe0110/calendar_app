@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:calendar_app/models/event.dart';
 import 'package:calendar_app/widgets/calendar/views/daily_view.dart';
 import 'package:calendar_app/widgets/calendar/views/monthly_view.dart';
+import 'package:intl/intl.dart';
 
 enum CalendarViewType {
   daily,
@@ -27,6 +28,7 @@ class CalendarView extends StatefulWidget {
 class _CalendarViewState extends State<CalendarView> {
   late CalendarViewType _currentView;
   late DateTime _currentDate;
+  final _monthFormat = DateFormat('MMMM');
 
   @override
   void initState() {
@@ -41,32 +43,34 @@ class _CalendarViewState extends State<CalendarView> {
       child: Column(
         children: [
           Text(
-            '${_currentDate.month == 3 ? 'March' : ''} ${_currentDate.day}',
+            '${_monthFormat.format(_currentDate)} ${_currentDate.day}',
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           Expanded(
-            child: ListView.builder(
-              itemCount: 24,
-              itemBuilder: (context, hour) {
-                final timeString =
-                    '${hour < 12 ? hour == 0 ? 12 : hour : hour == 12 ? 12 : hour - 12}:00 ${hour < 12 ? 'AM' : 'PM'}';
-                final currentEvents = widget.events
-                        ?.where((event) =>
-                            event.startDate.hour == hour &&
-                            event.startDate.day == _currentDate.day &&
-                            event.startDate.month == _currentDate.month &&
-                            event.startDate.year == _currentDate.year)
-                        .toList() ??
-                    [];
+            child: Material(
+              child: ListView.builder(
+                itemCount: 24,
+                itemBuilder: (context, hour) {
+                  final timeString =
+                      '${hour < 12 ? hour == 0 ? 12 : hour : hour == 12 ? 12 : hour - 12}:00 ${hour < 12 ? 'AM' : 'PM'}';
+                  final currentEvents = widget.events
+                          ?.where((event) =>
+                              event.startDate.hour == hour &&
+                              event.startDate.day == _currentDate.day &&
+                              event.startDate.month == _currentDate.month &&
+                              event.startDate.year == _currentDate.year)
+                          .toList() ??
+                      [];
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(timeString),
-                    ...currentEvents.map((event) => _buildEventTile(event)),
-                  ],
-                );
-              },
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(timeString),
+                      ...currentEvents.map((event) => _buildEventTile(event)),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -80,7 +84,7 @@ class _CalendarViewState extends State<CalendarView> {
       child: Column(
         children: [
           Text(
-            'March 2024',
+            '${_monthFormat.format(_currentDate)} ${_currentDate.year}',
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           Expanded(
@@ -193,24 +197,26 @@ class _CalendarViewState extends State<CalendarView> {
           },
         ),
         Expanded(
-          child: GestureDetector(
-            onHorizontalDragEnd: (details) {
-              if (_currentView == CalendarViewType.daily) {
-                setState(() {
-                  if (details.primaryVelocity! < 0) {
-                    // Swipe left - next day
-                    _currentDate = _currentDate.add(const Duration(days: 1));
-                  } else {
-                    // Swipe right - previous day
-                    _currentDate =
-                        _currentDate.subtract(const Duration(days: 1));
-                  }
-                });
-              }
-            },
-            child: _currentView == CalendarViewType.daily
-                ? _buildDailyView()
-                : _buildMonthlyView(),
+          child: Material(
+            child: GestureDetector(
+              onHorizontalDragEnd: (details) {
+                if (_currentView == CalendarViewType.daily) {
+                  setState(() {
+                    if (details.primaryVelocity! < 0) {
+                      // Swipe left - next day
+                      _currentDate = _currentDate.add(const Duration(days: 1));
+                    } else if (details.primaryVelocity! > 0) {
+                      // Swipe right - previous day
+                      _currentDate =
+                          _currentDate.subtract(const Duration(days: 1));
+                    }
+                  });
+                }
+              },
+              child: _currentView == CalendarViewType.daily
+                  ? _buildDailyView()
+                  : _buildMonthlyView(),
+            ),
           ),
         ),
       ],

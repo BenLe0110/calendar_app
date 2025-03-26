@@ -5,12 +5,16 @@ import 'package:calendar_app/models/event.dart';
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
   static Database? _database;
+  final bool useInMemoryDatabase;
 
-  factory DatabaseService() {
+  factory DatabaseService({bool useInMemoryDatabase = false}) {
+    if (useInMemoryDatabase) {
+      return DatabaseService._internal(useInMemoryDatabase: true);
+    }
     return _instance;
   }
 
-  DatabaseService._internal();
+  DatabaseService._internal({this.useInMemoryDatabase = false});
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -25,12 +29,21 @@ class DatabaseService {
   }
 
   Future<void> close() async {
-    final db = await database;
-    db.close();
-    _database = null;
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+    }
   }
 
   Future<Database> _initDatabase() async {
+    if (useInMemoryDatabase) {
+      return await openDatabase(
+        inMemoryDatabasePath,
+        version: 1,
+        onCreate: _createDB,
+      );
+    }
+
     final String path = join(await getDatabasesPath(), 'calendar.db');
     return await openDatabase(
       path,

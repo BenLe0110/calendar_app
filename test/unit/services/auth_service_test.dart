@@ -1,218 +1,192 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:calendar_app/services/auth_service.dart';
-import 'package:mockito/mockito.dart';
-import 'package:mockito/annotations.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:calendar_app/models/user.dart';
-import 'package:calendar_app/services/event_service.dart';
-
-// Generate mock classes
-@GenerateMocks([Database, EventService])
-import 'auth_service_test.mocks.dart';
+import 'package:path/path.dart' as path;
 
 void main() {
-  late AuthService authService;
-  late MockDatabase mockDatabase;
-  late MockEventService mockEventService;
+  TestWidgetsFlutterBinding.ensureInitialized();
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
 
-  setUp(() {
-    mockDatabase = MockDatabase();
-    mockEventService = MockEventService();
-    authService = AuthService();
+  late AuthService authService;
+  final dbPath =
+      path.join('.dart_tool', 'test_databases', 'auth_service_test.db');
+
+  setUp(() async {
+    authService = AuthService(customDatabasePath: dbPath);
+  });
+
+  tearDown(() async {
+    await authService.close();
+    await databaseFactory.deleteDatabase(dbPath);
   });
 
   group('AuthService Tests', () {
-    test('register - should create new user and associate events', () async {
-      // Arrange
-      when(mockDatabase.insert(
-        'users',
-        any,
-        conflictAlgorithm: anyNamed('conflictAlgorithm'),
-      )).thenAnswer((_) async => 1);
+    group('Registration', () {
+      test('should register new user successfully', () async {
+        final result = await authService.register(
+          email: 'test@example.com',
+          password: 'password123',
+          name: 'Test User',
+        );
+        expect(result.email, equals('test@example.com'));
+        expect(result.name, equals('Test User'));
+      });
 
-      when(mockEventService.getLocalId())
-          .thenAnswer((_) async => 'test-local-id');
-      when(mockEventService.associateEventsWithUser(any, any))
-          .thenAnswer((_) async => {});
+      test('should not allow duplicate email registration', () async {
+        await authService.register(
+          email: 'test2@example.com',
+          password: 'password123',
+          name: 'Test User 1',
+        );
 
-      // Act
-      final result = await authService.register(
-        'test@example.com',
-        'Test User',
-        'Test@123',
-      );
+        expect(
+            () => authService.register(
+                  email: 'test2@example.com',
+                  password: 'password456',
+                  name: 'Test User 2',
+                ),
+            throwsA(isA<AuthException>()));
+      });
 
-      // Assert
-      expect(result, isA<User>());
-      expect(result.email, 'test@example.com');
-      expect(result.name, 'Test User');
-      verify(mockDatabase.insert(
-        'users',
-        any,
-        conflictAlgorithm: anyNamed('conflictAlgorithm'),
-      )).called(1);
-      verify(mockEventService.getLocalId()).called(1);
-      verify(mockEventService.associateEventsWithUser(
-              'test-local-id', result.id))
-          .called(1);
+      test('should create user preferences on registration', () async {
+        final result = await authService.register(
+          email: 'test3@example.com',
+          password: 'password123',
+          name: 'Test User',
+        );
+
+        final db = await authService.database;
+        final prefs = await db.query('user_preferences',
+            where: 'userId = ?', whereArgs: [result.id]);
+        expect(prefs.length, 1);
+        expect(prefs.first['preferences'], '{}');
+      });
     });
 
-    test('register - should handle event association errors', () async {
-      // Arrange
-      when(mockDatabase.insert(
-        'users',
-        any,
-        conflictAlgorithm: anyNamed('conflictAlgorithm'),
-      )).thenAnswer((_) async => 1);
+    group('Authentication', () {
+      test('should login successfully with correct credentials', () async {
+        await authService.register(
+          email: 'test4@example.com',
+          password: 'password123',
+          name: 'Test User',
+        );
 
-      when(mockEventService.getLocalId())
-          .thenAnswer((_) async => 'test-local-id');
-      when(mockEventService.associateEventsWithUser(any, any))
-          .thenThrow(Exception('Association error'));
+        final result = await authService.login(
+          email: 'test4@example.com',
+          password: 'password123',
+        );
+        expect(result, isNotNull);
+        expect(result!.email, equals('test4@example.com'));
+      });
 
-      // Act & Assert
-      expect(
-        () => authService.register(
-          'test@example.com',
-          'Test User',
-          'Test@123',
-        ),
-        throwsException,
-      );
+      test('should not login with incorrect password', () async {
+        await authService.register(
+          email: 'test5@example.com',
+          password: 'password123',
+          name: 'Test User',
+        );
+
+        final result = await authService.login(
+          email: 'test5@example.com',
+          password: 'wrongpassword',
+        );
+        expect(result, isNull);
+      });
+
+      test('should not login with non-existent email', () async {
+        final result = await authService.login(
+          email: 'nonexistent@example.com',
+          password: 'password123',
+        );
+        expect(result, isNull);
+      });
+
+      test('should maintain current user after login', () async {
+        await authService.register(
+          email: 'test6@example.com',
+          password: 'password123',
+          name: 'Test User',
+        );
+
+        await authService.login(
+          email: 'test6@example.com',
+          password: 'password123',
+        );
+
+        final currentUser = await authService.getCurrentUser();
+        expect(currentUser, isNotNull);
+        expect(currentUser!.email, equals('test6@example.com'));
+      });
+
+      test('should clear current user after logout', () async {
+        await authService.register(
+          email: 'test7@example.com',
+          password: 'password123',
+          name: 'Test User',
+        );
+
+        await authService.login(
+          email: 'test7@example.com',
+          password: 'password123',
+        );
+
+        await authService.logout();
+        final currentUser = await authService.getCurrentUser();
+        expect(currentUser, isNull);
+      });
     });
 
-    test('login - should return user for valid credentials', () async {
-      // Arrange
-      when(mockDatabase.query(
-        'users',
-        where: anyNamed('where'),
-        whereArgs: anyNamed('whereArgs'),
-      )).thenAnswer((_) async => [
-            {
-              'id': '1',
-              'email': 'test@example.com',
-              'name': 'Test User',
-              'password': 'hashedPassword',
-            }
-          ]);
+    group('Password Management', () {
+      test('should reset password successfully', () async {
+        await authService.register(
+          email: 'test8@example.com',
+          password: 'password123',
+          name: 'Test User',
+        );
 
-      // Act
-      final result = await authService.login(
-        'test@example.com',
-        'Test@123',
-      );
+        await authService.resetPassword(
+          email: 'test8@example.com',
+          newPassword: 'newpassword123',
+        );
 
-      // Assert
-      expect(result, isA<User>());
-      expect(result?.email, 'test@example.com');
-      expect(result?.name, 'Test User');
-      verify(mockDatabase.query(
-        'users',
-        where: anyNamed('where'),
-        whereArgs: anyNamed('whereArgs'),
-      )).called(1);
+        final result = await authService.login(
+          email: 'test8@example.com',
+          password: 'newpassword123',
+        );
+        expect(result, isNotNull);
+      });
+
+      test('should not reset password for non-existent email', () async {
+        final result = await authService.resetPassword(
+          email: 'nonexistent@example.com',
+          newPassword: 'newpassword123',
+        );
+        expect(result, isFalse);
+      });
     });
 
-    test('login - should return null for invalid credentials', () async {
-      // Arrange
-      when(mockDatabase.query(
-        'users',
-        where: anyNamed('where'),
-        whereArgs: anyNamed('whereArgs'),
-      )).thenAnswer((_) async => []);
+    group('Error Handling', () {
+      test('should handle database errors gracefully', () async {
+        // Simulate a database error by closing the connection
+        await authService.close();
 
-      // Act
-      final result = await authService.login(
-        'wrong@example.com',
-        'WrongPassword',
-      );
+        final result = await authService.login(
+          email: 'test@example.com',
+          password: 'password123',
+        );
+        expect(result, isNull);
+      });
 
-      // Assert
-      expect(result, isNull);
-    });
-
-    test('getCurrentUser - should return current user when logged in',
-        () async {
-      // Arrange
-      when(mockDatabase.query(
-        'users',
-        where: anyNamed('where'),
-        whereArgs: anyNamed('whereArgs'),
-      )).thenAnswer((_) async => [
-            {
-              'id': '1',
-              'email': 'test@example.com',
-              'name': 'Test User',
-              'password': 'hashedPassword',
-            }
-          ]);
-
-      // Act
-      final result = await authService.getCurrentUser();
-
-      // Assert
-      expect(result, isA<User>());
-      expect(result?.email, 'test@example.com');
-      expect(result?.name, 'Test User');
-    });
-
-    test('getCurrentUser - should return null when not logged in', () async {
-      // Act
-      final result = await authService.getCurrentUser();
-
-      // Assert
-      expect(result, isNull);
-    });
-
-    test('logout - should clear current user', () async {
-      // Act
-      await authService.logout();
-
-      // Assert
-      final result = await authService.getCurrentUser();
-      expect(result, isNull);
-    });
-
-    test('resetPassword - should return true for existing user', () async {
-      // Arrange
-      when(mockDatabase.query(
-        'users',
-        where: anyNamed('where'),
-        whereArgs: anyNamed('whereArgs'),
-      )).thenAnswer((_) async => [
-            {
-              'id': '1',
-              'email': 'test@example.com',
-              'name': 'Test User',
-              'password': 'hashedPassword',
-            }
-          ]);
-
-      // Act
-      final result = await authService.resetPassword('test@example.com');
-
-      // Assert
-      expect(result, isTrue);
-      verify(mockDatabase.query(
-        'users',
-        where: anyNamed('where'),
-        whereArgs: anyNamed('whereArgs'),
-      )).called(1);
-    });
-
-    test('resetPassword - should return false for non-existent user', () async {
-      // Arrange
-      when(mockDatabase.query(
-        'users',
-        where: anyNamed('where'),
-        whereArgs: anyNamed('whereArgs'),
-      )).thenAnswer((_) async => []);
-
-      // Act
-      final result = await authService.resetPassword('nonexistent@example.com');
-
-      // Assert
-      expect(result, isFalse);
+      test('should handle invalid input data', () async {
+        expect(
+            () => authService.register(
+                  email: '',
+                  password: '',
+                  name: '',
+                ),
+            throwsA(isA<AuthException>()));
+      });
     });
   });
 }
